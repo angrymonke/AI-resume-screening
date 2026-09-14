@@ -1,21 +1,24 @@
 """Rolevia — traditional NLP resume similarity screening."""
 
 import streamlit as st
+import altair as alt
+import pandas as pd
 
-from nlp_utils import rank_resumes, results_dataframe
+from nlp_utils import rank_resumes
 from resume_parser import extract_resume_text
-from ui.components import header, kpi, page_intro, ranking_card
+from ui.components import candidate_analysis, header, kpi, page_intro, ranking_card, ranking_table
 from ui.styles import inject_styles
 
 st.set_page_config(page_title="Rolevia | Resume Screening", page_icon="◈", layout="wide", initial_sidebar_state="expanded")
 for key, value in {"dark_mode": False, "page": "New Screening", "results": [], "job_description": ""}.items():
     st.session_state.setdefault(key, value)
-inject_styles(st.session_state.dark_mode)
+inject_styles(st.session_state.dark_mode, st.session_state.page)
 
 with st.sidebar:
     st.markdown('<div class="brand"><span class="brand-mark">◈</span>Rolevia</div><div class="subtle" style="margin-bottom:22px">AI Resume Screening</div>', unsafe_allow_html=True)
-    for label, icon in [("New Screening", "+"), ("Results", "▦"), ("How It Works", "◎"), ("About", "i")]:
-        if st.button(f"{icon}  {label}", key=f"nav_{label}"):
+    nav_items = [("New Screening", "+", "nav_new_screening"), ("Results", "▦", "nav_results"), ("How It Works", "◎", "nav_how_it_works"), ("About", "i", "nav_about")]
+    for label, icon, key in nav_items:
+        if st.button(f"{icon}  {label}", key=key):
             st.session_state.page = label
             st.rerun()
     st.markdown('<div style="position:fixed;bottom:24px" class="subtle">AI Resume Screening<br>v1.0</div>', unsafe_allow_html=True)
@@ -33,7 +36,7 @@ if page == "New Screening":
     uploads = st.file_uploader("Drop PDF resumes here", type=["pdf"], accept_multiple_files=True, help="PDF files only. Each file is processed independently.")
     if uploads:
         st.caption("Selected files: " + "  •  ".join(f"✓ {f.name}" for f in uploads))
-    if st.button("✨  Analyze & Rank Resumes", disabled=not (job_description.strip() and uploads), key="analyze"):
+    if st.button("Analyze & Rank Resumes", disabled=not (job_description.strip() and uploads), key="analyze"):
         extracted = []
         with st.status("Analyzing candidates", expanded=True) as status:
             st.write("✓ Extracting resume text")
@@ -59,7 +62,7 @@ elif page == "Results":
     page_intro("Screening results", "Candidates, ranked clearly.", "Candidates are ranked by textual similarity to the job description—not candidate quality or hiring probability.")
     if not results:
         st.markdown('<div class="surface" style="margin-top:24px"><div class="section-title">No screening results yet</div><div class="subtle">Run a screening to see ranked candidates here.</div></div>', unsafe_allow_html=True)
-        if st.button("Start New Screening"):
+        if st.button("Start New Screening", key="start_screening"):
             st.session_state.page = "New Screening"; st.rerun()
     else:
         average = sum(x["match_score"] for x in results) / len(results)
@@ -75,25 +78,23 @@ elif page == "Results":
                 st.markdown('<div style="height:42px"></div>', unsafe_allow_html=True)
                 if st.button("View Analysis →", key=f"view_{item['rank']}"):
                     st.session_state.selected_candidate = item["rank"]
-        st.markdown('<div style="height:18px"></div><div class="section-title">Ranking Table</div>', unsafe_allow_html=True)
-        st.dataframe(results_dataframe(results), hide_index=True, width="stretch")
-        st.markdown('<div style="height:18px"></div><div class="section-title">Match Score Comparison</div>', unsafe_allow_html=True)
-        chart_data = results_dataframe(results)[["Candidate", "Match Score"]].copy()
-        chart_data["Match Score"] = chart_data["Match Score"].str.rstrip("%").astype(float)
-        st.bar_chart(chart_data, x="Match Score", y="Candidate", horizontal=True, color="#818CF8" if st.session_state.dark_mode else "#4F46E5")
-        selected = st.session_state.get("selected_candidate")
-        if selected:
-            item = next(x for x in results if x["rank"] == selected)
-            st.markdown('<div style="height:20px"></div><div class="surface">', unsafe_allow_html=True)
-            st.markdown(f"<div class='section-title'>Candidate Analysis — {item['filename']}</div>", unsafe_allow_html=True)
-            a, b, c = st.columns(3)
-            with a: kpi("Match Score", f"{item['match_score']:.1f}%")
-            with b: kpi("Cosine Similarity", f"{item['cosine_similarity']:.4f}")
-            with c: kpi("Category", item['match_category'])
-            st.markdown("<br><div class='subtle'>Match score represents the cosine similarity between the TF-IDF representation of the job description and this resume.</div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-title' style='margin-top:20px'>Extracted Resume Text</div>", unsafe_allow_html=True)
-            st.text_area("Extracted text", item["extracted_text"], height=260, disabled=True, label_visibility="collapsed")
-            st.markdown('</div>', unsafe_allow_html=True)
+                    st.rerun()
+            if st.session_state.get("selected_candidate") == item["rank"]:
+                candidate_analysis(item)
+        st.markdown('<div style="height:18px"></div><div class="section-title">Ranking Table</div><div class="subtle">A quick comparison of every screened candidate.</div>', unsafe_allow_html=True)
+        ranking_table(results)
+        st.markdown('<div style="height:18px"></div><div class="section-title">Match Score Comparison</div><div class="subtle">Higher bars indicate stronger textual similarity to the job description.</div>', unsafe_allow_html=True)
+        chart_data = pd.DataFrame({"Candidate": [item["filename"] for item in results], "Match score": [item["match_score"] for item in results]})
+        chart_color = "#A5B4FC" if st.session_state.dark_mode else "#4F46E5"
+        axis_color = "#CBD5E1" if st.session_state.dark_mode else "#475569"
+        chart = alt.Chart(chart_data).mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6, color=chart_color).encode(
+            x=alt.X("Match score:Q", scale=alt.Scale(domain=[0, 100]), title="Match score (%)", axis=alt.Axis(labelColor=axis_color, titleColor=axis_color, gridColor="#334155" if st.session_state.dark_mode else "#E2E8F0")),
+            y=alt.Y("Candidate:N", sort="-x", title=None, axis=alt.Axis(labelColor=axis_color, labelLimit=230)),
+            tooltip=[alt.Tooltip("Candidate:N", title="Candidate"), alt.Tooltip("Match score:Q", title="Match score", format=".1f")],
+        ).properties(height=max(180, 46 * len(results)), padding={"left": 6, "right": 12, "top": 8, "bottom": 8}).configure_view(stroke=None).configure(background="transparent")
+        st.markdown('<div class="chart-shell">', unsafe_allow_html=True)
+        st.altair_chart(chart, width="stretch", key="match_score_chart")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 elif page == "How It Works":
     page_intro("Methodology", "Simple NLP. Clear ranking.", "Rolevia uses one shared TF-IDF vocabulary to compare every resume fairly against the same job description.")
