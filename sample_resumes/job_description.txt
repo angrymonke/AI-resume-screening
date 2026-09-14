@@ -1,0 +1,9 @@
+Data Science / Python Analyst Intern
+
+We are looking for a curious and analytical intern to help build data-driven products. The ideal candidate has experience with Python, SQL, pandas, NumPy, statistics, data cleaning, exploratory data analysis, and machine learning. Responsibilities include preparing datasets, writing reliable analysis code, building baseline predictive models, evaluating results, creating clear visualizations or Streamlit dashboards, and communicating findings to technical and non-technical stakeholders. Familiarity with scikit-learn, Git, and software development best practices is a plus.
+
+Requirements:
+- B.Tech or equivalent degree in Computer Science, Data Science, Information Technology, or a related field
+- Practical Python and SQL skills
+- Understanding of data preprocessing, feature engineering, and model evaluation
+- Ability to explain analysis clearly and work collaboratively
